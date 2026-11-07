@@ -1,0 +1,31 @@
+﻿# Unreal Engine
+Binaries/
+Intermediate/
+Saved/
+DerivedDataCache/
+Build/
+.vs/
+*.sln
+*.suo
+*.VC.db
+*.opensdf
+*.opendb
+*.sdf
+*.xcodeproj
+*.xcworkspace
+
+# Packaged build output
+Packaged/
+PackagedBuilds/
+Builds/
+WindowsNoEditor/
+Android_ASTC/
+*.apk
+*.obb
+*.aab
+
+# IDE / OS
+.idea/
+.vscode/
+Thumbs.db
+.DS_Store
