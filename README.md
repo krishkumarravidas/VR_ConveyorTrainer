@@ -23,6 +23,7 @@ Placeholder: describe VR controller bindings (Meta Quest 2/3).
 - Unreal Engine 5.8, Blueprint-only
 - Target: Meta Quest 2/3 via Android/OpenXR
 - Android SDK info: NDK r27c, SDK 35 via Turnkey
+- Install Git LFS (git lfs install) before cloning, because the Unreal assets are stored in LFS.
 
 ## Next steps
 Placeholder: planned work.
