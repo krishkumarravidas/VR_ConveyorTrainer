@@ -109,6 +109,8 @@ MI_GLOW = make_instance("MI_LampGlow", M_UNLIT, (1.0, 0.93, 0.80))
 MI_CURTAIN = make_instance("MI_StripCurtain", M_LIT, (0.05, 0.07, 0.08))
 MI_CABINET = make_instance("MI_Cabinet", M_LIT, (0.30, 0.32, 0.31))
 MI_MACHINE = make_instance("MI_MachineGreen", M_LIT, (0.10, 0.20, 0.14))   # machine-enamel green
+MI_MACHINE_OILY = make_instance("MI_MachineOily", M_LIT, (0.06, 0.11, 0.08))  # stained, darker
+MI_OIL = make_instance("MI_Oil", M_LIT, (0.012, 0.010, 0.006))
 
 
 def V(x, y, z):
@@ -149,9 +151,9 @@ def box(label, center, size, mat, rot=None, collide=True, folder="Environment", 
     return mesh(label, CUBE, center, V(size[0] / 100.0, size[1] / 100.0, size[2] / 100.0), mat, rot, collide, folder, shadow)
 
 
-def cyl(label, center, diameter, length, mat, rot=None, collide=False, folder="Environment"):
+def cyl(label, center, diameter, length, mat, rot=None, collide=False, folder="Environment", shadow=True):
     """Engine cylinder: axis along local Z."""
-    return mesh(label, CYLINDER, center, V(diameter / 100.0, diameter / 100.0, length / 100.0), mat, rot, collide, folder)
+    return mesh(label, CYLINDER, center, V(diameter / 100.0, diameter / 100.0, length / 100.0), mat, rot, collide, folder, shadow)
 
 
 def text(label, loc, yaw, words, size, color=(0, 0, 0), folder="Environment/Signs", pitch=0.0):
@@ -238,9 +240,11 @@ def point_light(label, loc, intensity, radius, shadows):
 
 
 def hanging_lamp(label, x, y, z_lamp, ceiling, intensity, radius, shadows):
-    cyl(f"{label}_Rod", V(x, y, (z_lamp + ceiling) / 2), 2, ceiling - z_lamp, MI_STEEL, folder="Lighting")
-    cyl(f"{label}_Shade", V(x, y, z_lamp + 6), 55, 12, MI_STEEL, folder="Lighting")
-    cyl(f"{label}_Glow", V(x, y, z_lamp - 0.5), 46, 1, MI_GLOW, folder="Lighting")
+    # The fixture never casts shadows: the light sits right under the shade, so a shadow-casting shade
+    # throws a hard ~5 m dark disc onto the ceiling that flickers when the view turns quickly.
+    cyl(f"{label}_Rod", V(x, y, (z_lamp + ceiling) / 2), 2, ceiling - z_lamp, MI_STEEL, folder="Lighting", shadow=False)
+    cyl(f"{label}_Shade", V(x, y, z_lamp + 6), 55, 12, MI_STEEL, folder="Lighting", shadow=False)
+    cyl(f"{label}_Glow", V(x, y, z_lamp - 0.5), 46, 1, MI_GLOW, folder="Lighting", shadow=False)
     return point_light(label, V(x, y, z_lamp - 20), intensity, radius, shadows)
 
 
@@ -321,44 +325,69 @@ def build(level_path, playtest):
     for i, dy in enumerate((-CONV_LEN / 2 + 8, CONV_LEN / 2 - 8)):
         box(f"Stand_Leg_{i}", V(CONV_X, CONV_Y + dy, STAND_H / 2), (CONV_W - 10, 8, STAND_H), MI_STEEL, folder=F)
         box(f"Stand_Foot_{i}", V(CONV_X, CONV_Y + dy, 1.5), (CONV_W + 6, 14, 3), MI_STEEL, folder=F)
-    # Side frame rails under the belt; roller brackets hang from these.
+    # Side frame rails under the belt edges; the roller axles sit in these.
     for i, x in enumerate((FRONT_X - 1.5, BACK_X + 1.5)):
-        box(f"Frame_Rail_{i}", V(x, CONV_Y, STAND_H - 3), (3, CONV_LEN, 6), MI_YELLOW, folder=F)
+        box(f"Frame_Rail_{i}", V(x, CONV_Y, STAND_H - 4), (3, CONV_LEN, 8), MI_YELLOW, folder=F)
     box("Stand_Brace", V(CONV_X, CONV_Y, 14), (6, CONV_LEN - 16, 6), MI_STEEL, folder=F)
 
-    # Return idlers: 4 rollers hanging 14 cm under the belt, evenly spaced. Index 1 (straight ahead) is the fault.
-    ROLLER_Z, ROLLER_D, ROLLER_LEN = STAND_H - 14.0, 10.0, CONV_W + 10.0
+    # Idler rollers: 4 in a straight line, touching the underside of the belt, axles in the frame rails.
+    # Roller 1 (straight ahead of the start pad) is a ConveyorPart; it skews out of line only when it is this round's fault.
+    ROLLER_D, ROLLER_LEN = 10.0, CONV_W + 20.0   # axle ends stick out past the rails so they show from standing height
+    ROLLER_Z = STAND_H - ROLLER_D / 2 - 0.5
     ROLLER_Y = [CONV_Y + o for o in (-75.0, -25.0, 25.0, 75.0)]
-    FAULT = 1
+    PART_ROLLER = 1
     for i, y in enumerate(ROLLER_Y):
-        for j, x in enumerate((FRONT_X - 1.5, BACK_X + 1.5)):
-            drop = 4.0 if (i == FAULT and j == 0) else 0.0          # fault: bracket bent, front end dropped
-            h = (STAND_H - 6) - (ROLLER_Z - 4 - drop)
-            box(f"Roller_{i}_Bracket{j}", V(x, y, (STAND_H - 6) - h / 2), (2.5, 6, h), MI_STEEL, collide=False, folder=F)
-        if i == FAULT:
-            continue
-        cyl(f"Roller_{i}", V(CONV_X, y, ROLLER_Z), ROLLER_D, ROLLER_LEN, MI_ROLLER, rot=R(pitch=90), folder=F)
+        if i != PART_ROLLER:
+            cyl(f"Roller_{i}", V(CONV_X, y, ROLLER_Z), ROLLER_D, ROLLER_LEN, MI_ROLLER, rot=R(pitch=90), folder=F)
 
-    # Belt (dark rubber top), damaged idler roller (skewed + dropped one end), motor / drive housing.
-    slots = CONVEYOR.get_editor_property("static_materials")
-    log("conveyor material slots:", len(slots), [str(s.material_slot_name) for s in slots])
+    # ---- the three inspectable parts; the step manager picks one at random as the fault each round
+    FV = "Conveyor/FaultVisuals"
+
+    # Belt: dark rubber. Fault = a torn, fraying patch at the front edge (clear of where boxes stop).
     belt = make_part(
         "Part_Belt", CONVEYOR, V(CONV_X, CONV_Y, STAND_H), R(yaw=90), V(1, 1, 1),
-        "Belt", "Carries product along the line.", "Belt surface and tracking look OK.", False,
+        "Belt", "Carries product along the line.", "Torn and fraying at the front edge.", False,
         V(-25, 55, 62), overrides=[MI_BELT])
+    belt.set_editor_property("healthy_note", "Surface and tracking look OK.")
+    tear_y = CONV_Y - 20
+    belt_fx = [
+        box("Fault_BeltTear", V(FRONT_X + 9, tear_y, BELT_TOP + 0.3), (6, 46, 0.6), MI_BLACK, collide=False, folder=FV, shadow=False),
+        box("Fault_BeltFray_0", V(FRONT_X + 5.5, tear_y - 8, BELT_TOP + 0.8), (3, 14, 0.8), MI_ROLLER,
+            rot=R(roll=-12, yaw=8), collide=False, folder=FV, shadow=False),
+        box("Fault_BeltFray_1", V(FRONT_X + 5.5, tear_y + 10, BELT_TOP + 0.8), (3, 10, 0.8), MI_ROLLER,
+            rot=R(roll=10, yaw=-6), collide=False, folder=FV, shadow=False),
+        box("Fault_BeltEdgeNick", V(FRONT_X - 0.4, tear_y, BELT_TOP - 3), (1.2, 12, 6), MI_BLACK, collide=False, folder=FV, shadow=False),
+    ]
+    belt.set_editor_property("fault_visuals", belt_fx)
 
+    # Idler roller: grey and in line when healthy; cracked (M_Damaged), skewed 6 deg and dropped at the front when faulty.
     roller = make_part(
-        "Part_IdlerRoller", CYLINDER, V(CONV_X, ROLLER_Y[FAULT], ROLLER_Z - 2),
-        R(pitch=94, yaw=7),  # axis along X, skewed 7 deg and dropped at the front: visibly out of line
+        "Part_IdlerRoller", CYLINDER, V(CONV_X, ROLLER_Y[PART_ROLLER], ROLLER_Z), R(pitch=90),
         V(ROLLER_D / 100, ROLLER_D / 100, ROLLER_LEN / 100),
-        "Idler roller", "Supports the return belt and keeps it tracking straight.",
-        "Cracked and out of line.", True,
-        V(-72, 0, 30), overrides=[M_DAMAGED])
+        "Idler roller", "Supports the belt and keeps it tracking straight.",
+        "Cracked and out of line.", False,
+        V(-45, 0, 54), overrides=[MI_ROLLER])
+    roller.set_editor_property("healthy_note", "Turns freely and sits in line.")
+    roller.set_editor_property("fault_material_overrides", [M_DAMAGED])
+    roller.set_editor_property("move_when_faulty", True)
+    roller.set_editor_property("fault_rotation", R(pitch=93, yaw=6))
+    roller.set_editor_property("fault_location_offset", V(0, 0, -1.5))
 
+    # Motor / drive housing on a plinth so the raised belt feeds straight into its opening
+    # (the Kenney machine and conveyor are modelled to stand on the same base).
+    MY = CONV_Y - CONV_LEN / 2 - 62
+    box("Machine_Plinth", V(CONV_X, MY, STAND_H / 2), (150, 120, STAND_H), MI_STEEL, folder=F)
     motor = make_part(
-        "Part_MotorHousing", MACHINE, V(CONV_X + 5, CONV_Y - CONV_LEN / 2 - 62, 0), R(yaw=90), V(1, 1, 1),
-        "Motor housing", "Covers the drive motor that powers the belt.", "Housing intact. No damage.", False,
-        V(-45, 20, 150), overrides=[MI_MACHINE])
+        "Part_MotorHousing", MACHINE, V(CONV_X, MY, STAND_H), R(yaw=90), V(1, 1, 1),
+        "Motor housing", "Covers the drive motor that powers the belt.", "Oil leaking from the housing.", False,
+        V(-50, 20, 140), overrides=[MI_MACHINE])
+    motor.set_editor_property("healthy_note", "Housing intact. No leaks.")
+    motor.set_editor_property("fault_material_overrides", [MI_MACHINE_OILY])
+    motor_fx = [
+        cyl("Fault_OilPuddle", V(CONV_X - 80, MY + 60, 0.3), 46, 0.5, MI_OIL, folder=FV, shadow=False),
+        box("Fault_OilRun", V(CONV_X - 75.3, MY + 52, STAND_H / 2), (0.5, 7, STAND_H), MI_OIL, collide=False, folder=FV, shadow=False),
+    ]
+    motor.set_editor_property("fault_visuals", motor_fx)
 
     # Infeed hood with strip curtain at the right-hand end: boxes appear from inside it.
     HY0, HY1 = CONV_Y + CONV_LEN / 2 - 30, CONV_Y + CONV_LEN / 2 + 5

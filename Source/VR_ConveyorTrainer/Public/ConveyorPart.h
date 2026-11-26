@@ -59,13 +59,49 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Conveyor", meta = (MultiLine = true))
 	FString Description;
 
-	/** What the trainee sees when inspecting it (step 4). */
+	/** What the trainee sees when inspecting it while it is faulty (step 4). */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Conveyor", meta = (MultiLine = true))
-	FString InspectNote = TEXT("No visible damage.");
+	FString InspectNote = TEXT("Visible damage.");
 
-	/** True for the one intentionally damaged part. */
+	/** What the trainee sees when inspecting it while it is healthy. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Conveyor", meta = (MultiLine = true))
+	FString HealthyNote = TEXT("No visible damage.");
+
+	/** True for the one damaged part this round. Use SetFaulty at runtime so the visuals follow. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Conveyor")
 	bool bIsFaulty = false;
+
+	/** Can the step manager pick this part as the random fault? */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Conveyor|Fault")
+	bool bCanBeFaulty = true;
+
+	/** Per-slot materials used while faulty (falls back to MaterialOverrides). */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Conveyor|Fault")
+	TArray<TObjectPtr<UMaterialInterface>> FaultMaterialOverrides;
+
+	/** Actors shown only while faulty (oil puddle, belt tear...). Hidden in game otherwise. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Conveyor|Fault")
+	TArray<TObjectPtr<AActor>> FaultVisuals;
+
+	/** If set, the part moves to FaultRotation / FaultLocationOffset while faulty (e.g. a skewed roller). */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Conveyor|Fault")
+	bool bMoveWhenFaulty = false;
+
+	/** World rotation while faulty. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Conveyor|Fault")
+	FRotator FaultRotation = FRotator::ZeroRotator;
+
+	/** World offset while faulty (cm). */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Conveyor|Fault")
+	FVector FaultLocationOffset = FVector::ZeroVector;
+
+	/** Make this part the damaged one (or healthy). Updates materials, position, extra visuals and notes. */
+	UFUNCTION(BlueprintCallable, Category = "Conveyor|Fault")
+	void SetFaulty(bool bInFaulty);
+
+	/** Inspection text for the current state. */
+	UFUNCTION(BlueprintPure, Category = "Conveyor|Fault")
+	FString GetInspectNote() const { return bIsFaulty ? InspectNote : HealthyNote; }
 
 	/** Extra size (cm, each side) around the mesh that still counts as touching it. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Conveyor")
@@ -138,6 +174,10 @@ private:
 	TObjectPtr<UMaterialInstanceDynamic> LeaderMID;
 
 	float LabelHeight = 0.f;
+	bool bHasBaseTransform = false;
+	FVector BaseLocation = FVector::ZeroVector;
+	FRotator BaseRotation = FRotator::ZeroRotator;
+	void ApplyFaultState(bool bMove);
 
 	bool bSelectable = false;
 	bool bHoveredState = false;

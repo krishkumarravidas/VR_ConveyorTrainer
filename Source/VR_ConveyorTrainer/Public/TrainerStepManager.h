@@ -65,6 +65,10 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Trainer")
 	TObjectPtr<AConveyorFlow> LineFlow;
 
+	/** Pick a new random damaged part (belt / roller / motor housing) every round. Off = keep the level's choice. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Trainer")
+	bool bRandomFault = true;
+
 	/** Playtest build: live stats board, R / N hotkeys, reset button and a CSV log of every run. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Trainer|Playtest")
 	bool bPlaytestMode = false;
@@ -117,6 +121,9 @@ private:
 	int32 ChoiceIndex(ATrainerButton* Button) const;
 
 	void UpdateLineFlow();
+	void PickFault();
+	int32 LastFaultIndex = INDEX_NONE;
+	int32 ForcedFaultIndex = INDEX_NONE;
 	void PlaytestTick();
 	void RefreshPlaytestPanel();
 	void LogRun();

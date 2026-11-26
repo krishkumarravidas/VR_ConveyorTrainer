@@ -55,6 +55,11 @@ void ATrainerStepManager::BeginPlay()
 	if (Interactor) { Interactor->OnInputModeChanged.AddDynamic(this, &ATrainerStepManager::HandleInputModeChanged); }
 	if (ResetButton) { ResetButton->OnPressed.AddDynamic(this, &ATrainerStepManager::HandleButton); }
 
+#if !UE_BUILD_SHIPPING
+	// Dev: -TrainerFault=0/1/2 forces which part is damaged (for screenshots and debugging).
+	FParse::Value(FCommandLine::Get(), TEXT("TrainerFault="), ForcedFaultIndex);
+#endif
+
 	RestartTraining();
 
 	if (bPlaytestMode)
@@ -117,6 +122,10 @@ void ATrainerStepManager::TourTick()
 	case 19: Shot(); break;
 	case 20: View(-100.f, -8.f); break;
 	case 21: Shot(); break;                                               // left side (playtest board if present)
+	case 22: View(-42.f, -30.f); break;
+	case 23: Shot(); break;                                               // motor housing on its plinth
+	case 24: View(8.f, -58.f); break;
+	case 25: Shot(); break;                                               // looking down at the belt front edge and rollers
 	default:
 		GetWorldTimerManager().ClearTimer(TourTimer);
 		GEngine->Exec(GetWorld(), TEXT("quit"));
@@ -124,8 +133,42 @@ void ATrainerStepManager::TourTick()
 	}
 }
 
+void ATrainerStepManager::PickFault()
+{
+	TArray<int32> Candidates;
+	for (int32 i = 0; i < Parts.Num(); ++i)
+	{
+		if (Parts[i] && Parts[i]->bCanBeFaulty) { Candidates.Add(i); }
+	}
+	if (Candidates.Num() == 0) return;
+
+	int32 Pick = INDEX_NONE;
+	if (Candidates.Contains(ForcedFaultIndex))
+	{
+		Pick = ForcedFaultIndex;
+	}
+	else if (!bRandomFault)
+	{
+		Pick = FaultyIndex();
+	}
+	else
+	{
+		// Random, but never the same fault twice in a row so repeat runs feel different.
+		if (Candidates.Num() > 1) { Candidates.Remove(LastFaultIndex); }
+		Pick = Candidates[FMath::RandRange(0, Candidates.Num() - 1)];
+	}
+
+	for (int32 i = 0; i < Parts.Num(); ++i)
+	{
+		if (Parts[i]) { Parts[i]->SetFaulty(i == Pick); }
+	}
+	LastFaultIndex = Pick;
+	UE_LOG(LogTemp, Log, TEXT("Trainer: this round's fault is %s"), *PartLabel(Pick));
+}
+
 void ATrainerStepManager::RestartTraining()
 {
+	PickFault();
 	bStopped = bIsolated = bFaultFound = bDiagnosed = bResponded = false;
 	Identified.Reset();
 	Retries = 0;
@@ -203,7 +246,7 @@ void ATrainerStepManager::GoToStep(ETrainerStep NewStep)
 		ShowChoices({
 			TEXT("Restart belt to test it"),
 			TEXT("Report to maintenance"),
-			TEXT("Fix the roller myself") }, false);
+			TEXT("Fix it myself now") }, false);
 		ShowAction(FString());
 		break;
 
@@ -359,7 +402,7 @@ void ATrainerStepManager::HandlePart(AConveyorPart* Part)
 		if (Part->bIsFaulty)
 		{
 			bFaultFound = true;
-			SetFeedback(FString::Printf(TEXT("Found it: %s"), *Part->InspectNote), TrainerStyle::Good);
+			SetFeedback(FString::Printf(TEXT("Found it: %s"), *Part->GetInspectNote()), TrainerStyle::Good);
 			ShowAction(TEXT("Continue"));
 		}
 		else if (!bFaultFound)
@@ -476,7 +519,7 @@ void ATrainerStepManager::RefreshPanels()
 		case ETrainerStep::Inspect:
 			Progress = 4;
 			Title = TEXT("Inspect");
-			Body = TEXT("One part is damaged. Look closely - crouch to see under the belt.\nTouch the damaged part.");
+			Body = TEXT("One part is damaged. Check each one closely: belt, rollers under it, motor housing.\nTouch the damaged part.");
 			break;
 		case ETrainerStep::DiagnosePart:
 			Progress = 5;
@@ -515,7 +558,7 @@ void ATrainerStepManager::RefreshPanels()
 	if (WorkOrderPanel)
 	{
 		const bool bAllFound = Identified.Num() >= Parts.Num() && Parts.Num() > 0;
-		FString Body = TEXT("LINE 2 / BAY 4\nReported: grinding noise near the rollers.\nTask: inspect, find the fault, report it.\n\nCHECKLIST\n");
+		FString Body = TEXT("LINE 2 / BAY 4\nReported: abnormal noise and vibration.\nTask: inspect, find the fault, report it.\n\nCHECKLIST\n");
 		Body += CheckBox(bStopped) + TEXT("Machine stopped (sim)\n");
 		Body += CheckBox(bIsolated) + TEXT("Power isolated (sim)\n");
 		Body += CheckBox(bAllFound) + FString::Printf(TEXT("Parts identified %d/%d\n"), Identified.Num(), Parts.Num());
@@ -586,9 +629,9 @@ void ATrainerStepManager::RefreshPlaytestPanel()
 	const int32 InStep = FMath::FloorToInt(Now - StepEnterTime);
 	const int32 Target = FMath::RoundToInt(TargetSeconds);
 
-	FString Body = FString::Printf(TEXT("Run #%d   Time %d:%02d / target %d:%02d\nStep: %s (%ds)\nInput: %s   Retries: %d\nBelt: %s"),
+	FString Body = FString::Printf(TEXT("Run #%d   Time %d:%02d / target %d:%02d\nStep: %s (%ds)\nInput: %s   Retries: %d\nFault this round: %s   Belt: %s"),
 		RunCount + (Step == ETrainerStep::Complete ? 0 : 1), Total / 60, Total % 60, Target / 60, Target % 60, *StepName(Step), InStep, *InputName(), Retries,
-		LineFlow ? (LineFlow->IsMoving() ? TEXT("moving") : TEXT("stopped")) : TEXT("-"));
+		*PartLabel(FaultyIndex()), LineFlow ? (LineFlow->IsMoving() ? TEXT("moving") : TEXT("stopped")) : TEXT("-"));
 	if (!LastRunSummary.IsEmpty())
 	{
 		Body += TEXT("\n\nLast run: ") + LastRunSummary;
@@ -613,9 +656,9 @@ void ATrainerStepManager::LogRun()
 	FString Line;
 	if (!IFileManager::Get().FileExists(*Path))
 	{
-		Line += TEXT("date,map,input,total_s,workorder_s,checklist_s,identify_s,inspect_s,diagnose_s,respond_s,retries,under_target\n");
+		Line += TEXT("date,map,input,fault,total_s,workorder_s,checklist_s,identify_s,inspect_s,diagnose_s,respond_s,retries,under_target\n");
 	}
-	Line += FString::Printf(TEXT("%s,%s,%s,%.1f"), *FDateTime::Now().ToString(TEXT("%Y-%m-%d %H:%M:%S")), *GetWorld()->GetMapName(), *InputName(), Total);
+	Line += FString::Printf(TEXT("%s,%s,%s,%s,%.1f"), *FDateTime::Now().ToString(TEXT("%Y-%m-%d %H:%M:%S")), *GetWorld()->GetMapName(), *InputName(), *PartLabel(FaultyIndex()), Total);
 	for (ETrainerStep S : Order)
 	{
 		const double* Secs = StepSeconds.Find(S);

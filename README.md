@@ -15,13 +15,19 @@ Novice or trainee maintenance technicians in manufacturing and facilities settin
 2. Read the work order on the clipboard and accept it on the control box.
 3. Press STOP MACHINE (the belt slows to a stop) and ISOLATE POWER. Both are simulated.
 4. Touch three tagged parts: belt, idler roller, motor housing. A tag explains each one.
-5. Inspect the rollers under the belt and touch the damaged one.
+5. Inspect the belt, the rollers under it and the motor housing, then touch the damaged one. The fault is picked at random every round.
 6. Choose the faulty part and the right response (report to maintenance). See the summary.
 
 ## Implemented features (working now, tested on desktop)
 - **Factory bay:** steel columns with hazard bases, pallet racking, pallets, an MCC cabinet, pipes, hanging lamps and painted floor zones.
 - **Line 2 (under inspection):** a conveyor on a stand with yellow frame rails and an infeed hood with a strip curtain. Cardboard boxes ride the belt and stop when you press STOP MACHINE.
-- **Rollers:** four return idlers hang from brackets under the belt, evenly spaced. The damaged one sits straight ahead of the start spot. It is cracked, skewed 7 degrees, and dropped at the front with a bent bracket.
+- **Rollers:** four idler rollers sit in a straight line right under the belt, with their axles in the yellow frame rails. The ends stick out so you can see them from standing height.
+- **Motor housing:** sits on a steel plinth, so the raised belt feeds straight into its opening.
+- **Random fault every round:** belt, idler roller or motor housing (never the same one twice in a row). Each has its own visible damage:
+  - Belt: a torn, fraying patch at the front edge.
+  - Roller: cracked, skewed 6 degrees and dropped at the front.
+  - Motor: an oil leak down the plinth into a puddle.
+  The healthy parts look normal and their inspection tags say so.
 - **Line 1:** a second, always-running conveyor in the background.
 - **Full 5-step flow:**
   - Welcome
@@ -46,13 +52,17 @@ Novice or trainee maintenance technicians in manufacturing and facilities settin
   - a live stats board (timer against the 4-minute target, current step, input, retries, belt state)
   - a red RESET RUN button
   - PC keys R (restart) and N (skip step)
-  - one CSV row per finished run in `Saved/Playtest/playtest_runs.csv`, with per-step seconds and pass/fail
+  - one CSV row per finished run in `Saved/Playtest/playtest_runs.csv`, with the fault, per-step seconds and pass/fail
+  - the board also shows which part is faulty this round, for the person running the test
 
 ![Welcome: factory bay, Line 2 running](Docs/Screenshots/01_welcome_factory.png)
 ![Checklist on the control box (belt stopping)](Docs/Screenshots/02_control_box_checklist.png)
 ![Inspecting the damaged idler roller](Docs/Screenshots/03_inspect_roller.png)
 ![Completion summary](Docs/Screenshots/04_complete.png)
 ![Playtest board and clipboard](Docs/Screenshots/05_playtest_board.png)
+![Fault: torn belt](Docs/Screenshots/06_fault_belt.png)
+![Fault: oil leak under the motor housing](Docs/Screenshots/07_fault_motor.png)
+![Motor housing on its plinth, belt feeding into it](Docs/Screenshots/08_machine_plinth.png)
 
 ## Planned / not verified yet
 - A full test on the headset (Quest 2/3), with hands and with controllers, plus the recorded backup demo video
@@ -81,7 +91,7 @@ Novice or trainee maintenance technicians in manufacturing and facilities settin
 - One scene, one fault, one diagnosis decision.
 - No mechanical simulation, repair animation, torque specifications or electrical system.
 - Tested on desktop only so far. Fingertip poke, controller-tip poke and the hand-tracking manifest entries still need a Quest test.
-- Parts must be reached physically (poke only). The damaged roller sits under the belt, so trainees need to crouch a little. Check that this is comfortable on device.
+- Parts must be reached physically (poke only). The roller ends are at about 55 cm, so trainees need to bend down a little. Check that this is comfortable on device.
 - About 170 separate mesh actors and 4 movable lights. Check frame rate on a Quest 2 and merge meshes or bake lighting if needed.
 - Step logic is written in C++ and exposed to Blueprint (events, dispatchers and editable properties), rather than drawn as a Blueprint graph.
 - Lights are movable (no baked lighting yet).
@@ -93,12 +103,12 @@ Novice or trainee maintenance technicians in manufacturing and facilities settin
 - **Install Git LFS** (`git lfs install`) before cloning, because the Unreal assets are stored in LFS.
 - Open `VR_ConveyorTrainer.uproject` with UE 5.8 and let it build the module.
 - Rebuild both maps from script (optional, editor closed): `UnrealEditor-Cmd.exe VR_ConveyorTrainer.uproject -run=pythonscript -script=Scripts/build_conveyor_level.py`
-- Rebuild and take a screenshot of every step in one go: `powershell -ExecutionPolicy Bypass -File Scripts\rebuild_and_tour.ps1` (add `-SkipBuild`, or `-Map L_ConveyorTrainer_Playtest`). Images land in `Saved/Screenshots/WindowsEditor`.
+- Rebuild and take a screenshot of every step in one go: `powershell -ExecutionPolicy Bypass -File Scripts\rebuild_and_tour.ps1` (add `-SkipBuild`, `-Map L_ConveyorTrainer_Playtest`, or `-Fault 0|1|2` to force the belt, roller or motor fault). Images land in `Saved/Screenshots/WindowsEditor`.
 
 ## Code overview
-- `TrainerStepManager`: the 5-step flow, feedback, summary, belt stop, and playtest stats/log
+- `TrainerStepManager`: the 5-step flow, random fault per round, feedback, summary, belt stop, and playtest stats/log
 - `XRHandInteractor`: poke-only input for hands, controller tips and desktop click; one touch path for all three
-- `ConveyorPart`: touchable part with a padded touch zone, hanging tag, highlight and inspection note
+- `ConveyorPart`: touchable part with a padded touch zone, hanging tag, highlight, and a healthy/faulty state (materials, position, extra fault props, inspection note)
 - `ConveyorFlow`: instanced cardboard boxes riding a belt path, with a smooth stop and start
 - `TrainerButton` / `TrainerPanel`: industrial push buttons and whiteboard / clipboard / sign boards
 

@@ -83,7 +83,36 @@ void AConveyorPart::OnConstruction(const FTransform& Transform)
 void AConveyorPart::BeginPlay()
 {
 	Super::BeginPlay();
+	BaseLocation = GetActorLocation();
+	BaseRotation = GetActorRotation();
+	bHasBaseTransform = true;
 	InitVisuals();
+	ApplyFaultState(true);
+}
+
+void AConveyorPart::SetFaulty(bool bInFaulty)
+{
+	bIsFaulty = bInFaulty;
+	ApplyFaultState(true);
+	ApplyMaterials();
+	RefreshLabel();
+}
+
+void AConveyorPart::ApplyFaultState(bool bMove)
+{
+	// Extra fault visuals only exist while faulty (game only; the editor keeps them visible for layout).
+	if (GetWorld() && GetWorld()->IsGameWorld())
+	{
+		for (AActor* A : FaultVisuals)
+		{
+			if (A) { A->SetActorHiddenInGame(!bIsFaulty); }
+		}
+	}
+	if (bMove && bMoveWhenFaulty && bHasBaseTransform)
+	{
+		SetActorLocationAndRotation(bIsFaulty ? BaseLocation + FaultLocationOffset : BaseLocation,
+			bIsFaulty ? FaultRotation : BaseRotation);
+	}
 }
 
 void AConveyorPart::UpdateTouchZone()
@@ -153,7 +182,9 @@ void AConveyorPart::ApplyMaterials()
 
 	for (int32 i = 0; i < NumSlots; ++i)
 	{
-		UMaterialInterface* M = MaterialOverrides.IsValidIndex(i) && MaterialOverrides[i] ? MaterialOverrides[i].Get() : SM->GetMaterial(i);
+		UMaterialInterface* M = SM->GetMaterial(i);
+		if (MaterialOverrides.IsValidIndex(i) && MaterialOverrides[i]) { M = MaterialOverrides[i]; }
+		if (bIsFaulty && FaultMaterialOverrides.IsValidIndex(i) && FaultMaterialOverrides[i]) { M = FaultMaterialOverrides[i]; }
 		Mesh->SetMaterial(i, M);
 	}
 }
@@ -168,7 +199,7 @@ void AConveyorPart::RefreshLabel()
 	case EPartLabelMode::Marker:      Text = TEXT("?"); Size = LabelTextSize * 1.8f; break;
 	case EPartLabelMode::NameAndRole: Text = PartName.ToUpper() + TEXT("\n") + TrainerStyle::Wrap(Description, 28); break;
 	case EPartLabelMode::NameOnly:    Text = PartName.ToUpper(); TagColor = TrainerStyle::Paper; break;
-	case EPartLabelMode::InspectNote: Text = PartName.ToUpper() + TEXT("\n") + TrainerStyle::Wrap(InspectNote, 28); TagColor = bIsFaulty ? FLinearColor(1.f, 0.4f, 0.05f) : TrainerStyle::Paper; break;
+	case EPartLabelMode::InspectNote: Text = PartName.ToUpper() + TEXT("\n") + TrainerStyle::Wrap(GetInspectNote(), 28); TagColor = bIsFaulty ? FLinearColor(1.f, 0.4f, 0.05f) : TrainerStyle::Paper; break;
 	default: break;
 	}
 
